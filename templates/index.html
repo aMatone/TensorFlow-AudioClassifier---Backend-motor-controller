@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <row>
+        <div>Artificial Intelligence Model</div>
+        <div class="result"><h5 id="label">[Initial Label]</h5></div>
+        <button type="button" onclick="init()">Start</button>
+        <div id="label-container"></div>
+    </row>
+
+
+    <script type="text/javascript">
+// URL for the Teachable Machine model
+const URL = "";
+
+// Frequency request threshold
+const freqRequest = 0.5;
+
+// Function to create and load the Teachable Machine model
+async function createModel() {
+    // Construct URLs for model and metadata
+    const checkpointURL = URL + "model.json";
+    const metadataURL = URL + "metadata.json";
+
+    // Create a speechCommands recognizer with the specified parameters
+    const recognizer = speechCommands.create(
+        "BROWSER_FFT",
+        undefined,
+        checkpointURL,
+        metadataURL
+    );
+
+    // Ensure the model is loaded before returning
+    await recognizer.ensureModelLoaded();
+
+    return recognizer;
+}
+
+// Function to fetch scores from the server
+async function fetchScores() {
+    const response = await fetch('/get_scores');
+    return response.json();
+}
+
+// Function to send scores to the Flask application
+function SendScoresToBackend(classLabel) {
+    fetch('/process_result', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 'scores': classLabel }),
+    });
+}
+
+// Function to update the UI and send scores to Flask
+function updateUIAndSendScores(classLabels, scores) {
+    const labelContainer = document.getElementById("label-container");
+    const bigLabel = document.getElementById("label");
+    let higher = 0;
+
+    // Iterate through class labels and scores
+    for (let i = 0; i < classLabels.length; i++) {
+        const num = scores[i].toFixed(2);
+
+        // Check if the current score is higher than the previous highest
+        if (higher < num) {
+            higher = num;
+
+            // If the class label is not "Background Noise," send scores to Flask
+            SendScoresToBackend(classLabels[i]);
+
+            // Update the label text with the current result
+            bigLabel.innerHTML = classLabels[i];
+        }
+
+        // Update the UI with the current class prediction and score
+        const classPrediction = classLabels[i] + ": " + scores[i].toFixed(2);
+        labelContainer.childNodes[i].innerHTML = classPrediction;
+
+    }
+}
+
+// Function to initialize the application
+async function init() {
+    // Create and load the Teachable Machine model
+    const recognizer = await createModel();
+
+    // Get class labels from the recognizer
+    const classLabels = recognizer.wordLabels();
+
+    // Get the label container element by ID
+    const labelContainer = document.getElementById("label-container");
+
+    // Create div elements for each class label in the label container
+    for (let i = 0; i < classLabels.length; i++) {
+        labelContainer.appendChild(document.createElement("div"));
+    }
+
+    // Start listening for speech recognition results
+    recognizer.listen(result => {
+        const scores = result.scores;
+        // Update the UI and send scores to Flask
+        updateUIAndSendScores(classLabels, scores);
+    }, {
+        includeSpectrogram: true,
+        probabilityThreshold: 0.75,
+        invokeCallbackOnNoiseAndUnknown: true,
+        overlapFactor: freqRequest
+    });
+
+    // Update the label periodically
+    //setInterval(updateLabel, 1000);
+}
+
+    </script>
+
+</body>
+</html>
